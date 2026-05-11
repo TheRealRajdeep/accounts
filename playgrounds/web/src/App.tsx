@@ -27,6 +27,7 @@ import {
   testnet,
   tokens,
 } from './provider.js'
+import { TurnkeyEmailOtp } from './TurnkeyEmailOtp.js'
 
 const sectionLinks = [
   { id: 'provider', title: 'Provider' },
@@ -59,6 +60,7 @@ export function App() {
 
   return (
     <div className="playground min-h-dvh bg-background text-foreground" data-regen-radius="small">
+      <TurnkeyEmailOtp />
       <div className="playground-layout">
         <aside className="playground-rail">
           <div className="flex min-h-0 flex-col gap-[20px]">
@@ -177,6 +179,7 @@ function ConfigPanel(props: {
           <select value={adapterType} onChange={(e) => onSwitch(e.target.value as AdapterType)}>
             <option value="tempoWallet">tempoWallet</option>
             <option value="dialogRefImpl">dialogRefImpl</option>
+            <option value="turnkey">turnkey</option>
             <option value="webAuthn">webAuthn</option>
             <option value="secp256k1">secp256k1</option>
           </select>
