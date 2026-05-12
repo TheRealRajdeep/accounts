@@ -432,7 +432,7 @@ describe('find', () => {
     expect(result.source).toMatchInlineSnapshot(`"accessKey"`)
   })
 
-  test('behavior: scoped access key used when no calls provided', async () => {
+  test('behavior: scoped access key skipped when no calls provided', async () => {
     const keyPair = await WebCryptoP256.createKeyPair()
     const store = setup(
       [{ address: accounts[0].address, keyType: 'secp256k1', privateKey: privateKeys[0] }],
@@ -449,6 +449,6 @@ describe('find', () => {
 
     const result = Account.find({ signable: true, store })
 
-    expect(result.source).toMatchInlineSnapshot(`"accessKey"`)
+    expect(result.source).toMatchInlineSnapshot(`"root"`)
   })
 })

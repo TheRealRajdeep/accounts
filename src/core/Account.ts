@@ -74,8 +74,8 @@ export function find(options: find.Options): TempoAccount.Account | JsonRpcAccou
 
   const activeAddr = accounts[activeAccount]?.address
   const root = address
-    ? accounts.find((a) => a.address === address)
-    : accounts.find((a) => a.address === activeAddr)
+    ? accounts.find((a) => a.address.toLowerCase() === address.toLowerCase())
+    : accounts.find((a) => activeAddr && a.address.toLowerCase() === activeAddr.toLowerCase())
   if (!root)
     throw address
       ? new Provider.UnauthorizedError({ message: `Account "${address}" not found.` })
@@ -83,18 +83,8 @@ export function find(options: find.Options): TempoAccount.Account | JsonRpcAccou
 
   // When accessKey is requested, prefer a locally-signable access key for this address.
   if (accessKey) {
-    const key = accessKeys.find(
-      (a) =>
-        a.access.toLowerCase() === root.address.toLowerCase() &&
-        (('keyPair' in a && !!a.keyPair) || ('privateKey' in a && !!a.privateKey)),
-    )
-    if (key) {
-      // Remove expired access keys.
-      if (key.expiry && key.expiry < Date.now() / 1000)
-        store.setState({ accessKeys: accessKeys.filter((a) => a !== key) })
-      // Use access key if unscoped or scopes cover the requested calls; otherwise fall through to root.
-      else if (scopesMatch(key, options)) return hydrateAccessKey(key) as never
-    }
+    const key = findAccessKey(root, { accessKeys, options, store })
+    if (key) return hydrateAccessKey(key) as never
   }
 
   return hydrate(root, { signable }) as never
@@ -119,6 +109,33 @@ export declare namespace find {
 export type Find = {
   (options: Omit<find.Options, 'store'> & { signable: true }): TempoAccount.Account
   (options?: Omit<find.Options, 'store'>): TempoAccount.Account | JsonRpcAccount
+}
+
+function findAccessKey(
+  root: Store,
+  parameters: {
+    accessKeys: readonly AccessKey[]
+    options: find.Options
+    store: core_Store.Store
+  },
+): AccessKey | undefined {
+  const { accessKeys, options, store } = parameters
+  let accessKeys_next = accessKeys
+  for (const key of accessKeys) {
+    if (key.access.toLowerCase() !== root.address.toLowerCase()) continue
+    if (!('keyPair' in key && !!key.keyPair) && !('privateKey' in key && !!key.privateKey)) continue
+
+    // Remove expired access keys.
+    if (key.expiry && key.expiry < Date.now() / 1000) {
+      accessKeys_next = accessKeys_next.filter((a) => a !== key)
+      store.setState({ accessKeys: accessKeys_next })
+      continue
+    }
+
+    // Use access key if unscoped or scopes cover the requested calls; otherwise keep looking.
+    if (scopesMatch(key, options)) return key
+  }
+  return undefined
 }
 
 /** Hydrates an access key entry to a viem Account. Only works for locally-generated keys with a `keyPair`. */
@@ -184,7 +201,8 @@ export declare namespace hydrate {
 
 /** Returns true if the access key's scopes cover the requested calls (or key is unscoped). */
 function scopesMatch(key: AccessKey, options: find.Options): boolean {
-  if (!options.calls || !key.scopes) return true
+  if (!key.scopes) return true
+  if (!options.calls) return false
   return options.calls!.every((call) => {
     if (!call.to) return false
     const callTo = call.to.toLowerCase()
