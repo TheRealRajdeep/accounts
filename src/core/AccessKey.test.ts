@@ -1,6 +1,7 @@
 import { WebCryptoP256 } from 'ox'
 import { KeyAuthorization, SignatureEnvelope } from 'ox/tempo'
-import { Account as TempoAccount } from 'viem/tempo'
+import { encodeErrorResult } from 'viem'
+import { Abis, Account as TempoAccount } from 'viem/tempo'
 import { describe, expect, test } from 'vp/test'
 
 import { accounts, privateKeys } from '../../test/config.js'
@@ -27,6 +28,12 @@ function createKeyAuthorization(
     },
     { signature: SignatureEnvelope.from(`0x${'00'.repeat(65)}`) },
   )
+}
+
+function createRevert(errorName: string) {
+  return Object.assign(new Error('reverted'), {
+    data: encodeErrorResult({ abi: Abis.abis, errorName, args: [] } as never),
+  })
 }
 
 describe('save', () => {
@@ -197,6 +204,70 @@ describe('removePending', () => {
   })
 })
 
+describe('invalidate', () => {
+  async function setup() {
+    const store = createStore()
+    const keyPair = await WebCryptoP256.createKeyPair()
+    const account = TempoAccount.fromWebCryptoP256(keyPair, { access: rootAddress })
+    AccessKey.save({
+      address: rootAddress,
+      keyAuthorization: createKeyAuthorization(account.accessKeyAddress),
+      keyPair,
+      store,
+    })
+    return { account, store }
+  }
+
+  test('default: removes matching access key for stale-key errors', async () => {
+    const { account, store } = await setup()
+    const keyPair = await WebCryptoP256.createKeyPair()
+    const account_other = TempoAccount.fromWebCryptoP256(keyPair, { access: rootAddress })
+    AccessKey.save({
+      address: rootAddress,
+      keyAuthorization: createKeyAuthorization(account_other.accessKeyAddress),
+      keyPair,
+      store,
+    })
+
+    const result = AccessKey.invalidate(account, createRevert('KeyNotFound'), { store })
+
+    expect(result).toMatchInlineSnapshot(`true`)
+    expect(store.getState().accessKeys.map((key) => key.address)).toMatchInlineSnapshot(`
+      [
+        "${account_other.accessKeyAddress}",
+      ]
+    `)
+  })
+
+  test('behavior: preserves access key for recoverable execution errors', async () => {
+    const { account, store } = await setup()
+
+    const result = AccessKey.invalidate(account, createRevert('SpendingLimitExceeded'), {
+      store,
+    })
+
+    expect(result).toMatchInlineSnapshot(`false`)
+    expect(store.getState().accessKeys.length).toMatchInlineSnapshot(`1`)
+  })
+
+  test('behavior: preserves access key for unknown errors', async () => {
+    const { account, store } = await setup()
+
+    const result = AccessKey.invalidate(account, new Error('network failed'), { store })
+
+    expect(result).toMatchInlineSnapshot(`false`)
+    expect(store.getState().accessKeys.length).toMatchInlineSnapshot(`1`)
+  })
+
+  test('behavior: no-op for root accounts', () => {
+    const store = createStore()
+
+    const result = AccessKey.invalidate(accounts[0]!, createRevert('KeyNotFound'), { store })
+
+    expect(result).toMatchInlineSnapshot(`false`)
+  })
+})
+
 describe('generate', () => {
   test('default: returns access key and key pair', async () => {
     const result = await AccessKey.generate()
@@ -224,14 +295,12 @@ describe('prepare', () => {
     expect(result.keyPair).toBeDefined()
   })
 
-  test('behavior: prepares external key authorization from public key', async () => {
-    const keyPair = await WebCryptoP256.createKeyPair()
-    const account = TempoAccount.fromWebCryptoP256(keyPair)
-
+  test('behavior: prepares external key authorization from address', async () => {
     const result = await AccessKey.prepare({
+      address: accounts[1]!.address,
       chainId: 123n,
       expiry: 456,
-      keyType: 'p256',
+      keyType: 'webAuthn',
       limits: [
         {
           limit: 1000n,
@@ -246,13 +315,12 @@ describe('prepare', () => {
           selector: 'transfer(address,uint256)',
         },
       ],
-      publicKey: account.publicKey,
     })
 
     expect(result.keyPair).toBeUndefined()
     expect(result.keyAuthorization).toMatchInlineSnapshot(`
       {
-        "address": "${account.address.toLowerCase()}",
+        "address": "${accounts[1]!.address}",
         "chainId": 123n,
         "expiry": 456,
         "limits": [
@@ -271,7 +339,7 @@ describe('prepare', () => {
             "selector": "0xa9059cbb",
           },
         ],
-        "type": "p256",
+        "type": "webAuthn",
       }
     `)
   })

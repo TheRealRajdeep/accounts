@@ -203,14 +203,13 @@ export function turnkey(options: turnkey.Options): Adapter.Adapter {
     }
 
     async function prepareKeyAuthorization(options: Adapter.authorizeAccessKey.Parameters) {
-      const { address, expiry, keyType, limits, publicKey, scopes } = options
+      const { address, expiry, keyType, limits, scopes } = options
       return await AccessKey.prepare({
         address,
         chainId: options.chainId ?? getClient().chain.id,
         expiry,
         keyType,
         limits,
-        publicKey,
         scopes,
       })
     }
@@ -268,8 +267,8 @@ export function turnkey(options: turnkey.Options): Adapter.Adapter {
         const result = await fn(account, keyAuthorization ?? undefined)
         AccessKey.removePending(account, { store })
         return result
-      } catch {
-        AccessKey.remove(account, { store })
+      } catch (error) {
+        AccessKey.invalidate(account, error, { store })
         return undefined
       }
     }

@@ -3,7 +3,18 @@ import { KeyAuthorization } from 'ox/tempo'
 import { Account as TempoAccount } from 'viem/tempo'
 
 import type { OneOf } from '../internal/types.js'
+import * as ExecutionError from './ExecutionError.js'
 import type * as Store from './Store.js'
+
+const removalErrorNames = new Set([
+  'InvalidSignature',
+  'InvalidSignatureFormat',
+  'InvalidSignatureType',
+  'KeyAlreadyRevoked',
+  'KeyExpired',
+  'KeyNotFound',
+  'SignatureTypeMismatch',
+])
 
 /** Access key entry stored alongside accounts. */
 export type AccessKey = {
@@ -79,11 +90,11 @@ export declare namespace generate {
 
 /** Prepares an unsigned key authorization and local key material when needed. */
 export async function prepare(options: prepare.Options): Promise<prepare.ReturnType> {
-  const { address, chainId, expiry, keyType, limits, publicKey, scopes } = options
+  const { address, chainId, expiry, keyType, limits, scopes } = options
 
-  if (address || publicKey) {
+  if (address) {
     const keyAuthorization = KeyAuthorization.from({
-      address: address ?? Address.fromPublicKey(PublicKey.from(publicKey!)),
+      address,
       chainId: BigInt(chainId),
       expiry,
       limits,
@@ -108,7 +119,7 @@ export async function prepare(options: prepare.Options): Promise<prepare.ReturnT
 export declare namespace prepare {
   /** Options for {@link prepare}. */
   type Options = {
-    /** External access key address. Alternative to `publicKey`. */
+    /** External access key address. When omitted, a local P256 key is generated. */
     address?: Address.Address | undefined
     /** Chain ID the key authorization is scoped to. */
     chainId: bigint | number
@@ -118,8 +129,6 @@ export declare namespace prepare {
     keyType?: 'secp256k1' | 'p256' | 'webAuthn' | undefined
     /** TIP-20 spending limits for this key. */
     limits?: readonly KeyAuthorization.TokenLimit[] | undefined
-    /** External public key to derive the access key address from. */
-    publicKey?: Hex.Hex | undefined
     /** Call scopes restricting which contracts/selectors this key can call. */
     scopes?: readonly KeyAuthorization.Scope[] | undefined
   }
@@ -160,6 +169,26 @@ export function remove(account: TempoAccount.Account, options: { store: Store.St
       (a) => a.address?.toLowerCase() !== accessKeyAddress?.toLowerCase(),
     ),
   }))
+}
+
+/** Invalidates a stored access key when the error proves it is no longer usable. */
+export function invalidate(
+  account: TempoAccount.Account,
+  error: unknown,
+  options: invalidate.Options,
+): boolean {
+  if (account.source !== 'accessKey') return false
+  if (!shouldRemoveForError(error)) return false
+  remove(account, options)
+  return true
+}
+
+export declare namespace invalidate {
+  /** Options for {@link invalidate}. */
+  type Options = {
+    /** Reactive state store. */
+    store: Store.Store
+  }
 }
 
 /** Permanently removes the pending key authorization for an access key account. */
@@ -252,6 +281,12 @@ function scopesMatch(
       return callSelector === scopeSelector
     })
   })
+}
+
+function shouldRemoveForError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const parsed = ExecutionError.parse(error)
+  return removalErrorNames.has(parsed.errorName)
 }
 
 /** Saves an access key to the store with its one-time key authorization. */
