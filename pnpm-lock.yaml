@@ -267,6 +267,9 @@ importers:
       accounts:
         specifier: workspace:*
         version: link:../..
+      hono:
+        specifier: ^4
+        version: 4.12.18
       react:
         specifier: ^19.2.5
         version: 19.2.5
@@ -356,6 +359,9 @@ importers:
       accounts:
         specifier: workspace:*
         version: link:../..
+      hono:
+        specifier: ^4
+        version: 4.12.18
       react:
         specifier: ^19.2.5
         version: 19.2.5
@@ -405,6 +411,9 @@ importers:
       accounts:
         specifier: workspace:*
         version: link:../..
+      hono:
+        specifier: ^4
+        version: 4.12.18
       react:
         specifier: ^19.2.5
         version: 19.2.5
@@ -454,6 +463,9 @@ importers:
       accounts:
         specifier: workspace:*
         version: link:../..
+      hono:
+        specifier: ^4
+        version: 4.12.18
       react:
         specifier: ^19.2.5
         version: 19.2.5
