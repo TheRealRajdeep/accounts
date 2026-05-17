@@ -15,6 +15,12 @@ const otherAccount = privateKeyToAccount(
 )
 
 describe('challenge', () => {
+  test('error: requires pinned origin or domain', () => {
+    expect(() => auth()).toThrowErrorMatchingInlineSnapshot(
+      `[Error: \`auth()\` requires \`origin\` or \`domain\` to pin SIWE domain binding.]`,
+    )
+  })
+
   test('returns challenge message with chainId, nonce, zero-address placeholder', async () => {
     const { app } = setup()
 
@@ -689,7 +695,7 @@ describe('getSession', () => {
 
 describe('store: atomic `take` preferred, non-atomic fallback', () => {
   test('Kv.memory() (has `take`) is accepted', () => {
-    expect(() => auth({ store: Kv.memory() })).not.toThrow()
+    expect(() => auth({ domain: 'wallet.example', store: Kv.memory() })).not.toThrow()
   })
 
   test('store without `take` falls back to non-atomic get + delete', async () => {
@@ -726,8 +732,7 @@ describe('store: atomic `take` preferred, non-atomic fallback', () => {
 
 describe('origin / trustProxy', () => {
   test('default: ignores `x-forwarded-host` and `x-forwarded-proto`', async () => {
-    // No domain pin — relies on host header. trustProxy defaults to false.
-    const handler = auth()
+    const handler = auth({ domain: 'real.example' })
     const app = new Hono()
     app.route('/', handler)
 
@@ -747,7 +752,7 @@ describe('origin / trustProxy', () => {
   })
 
   test('trustProxy: true → honors `x-forwarded-host` and `x-forwarded-proto`', async () => {
-    const handler = auth({ trustProxy: true })
+    const handler = auth({ domain: 'app.example', trustProxy: true })
     const app = new Hono()
     app.route('/', handler)
 
@@ -805,7 +810,7 @@ describe('origin / trustProxy', () => {
       configurable: true,
     })
     try {
-      const handler = auth()
+      const handler = auth({ domain: 'app.example' })
       const app = new Hono()
       app.route('/', handler)
 
