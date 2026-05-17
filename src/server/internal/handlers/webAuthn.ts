@@ -89,6 +89,8 @@ export function webAuthn(options: webAuthn.Options): webAuthn.ReturnType {
     ...rest
   } = options
   const origin = options.origin as string | string[]
+  if (!kv.create) throw new Error('`webAuthn({ kv })` requires a Kv with atomic `create` support')
+  const create = kv.create.bind(kv)
 
   const router = from(rest)
 
@@ -149,9 +151,13 @@ export function webAuthn(options: webAuthn.Options): webAuthn.ReturnType {
       const userId = stored.userId
         ? Base64.fromBytes(Bytes.fromString(stored.userId), { pad: false, url: true })
         : undefined
+      const created = await create(`credential:${credentialId}`, {
+        publicKey,
+        ...(userId ? { userId } : {}),
+      })
+      if (!created) throw new Error('Credential already exists')
 
-      const [, hook] = await Promise.all([
-        kv.set(`credential:${credentialId}`, { publicKey, ...(userId ? { userId } : {}) }),
+      const [hook] = await Promise.all([
         onRegister?.({
           credentialId,
           name: stored.name,
@@ -263,17 +269,9 @@ export function webAuthn(options: webAuthn.Options): webAuthn.ReturnType {
       })
       if (!valid) throw new Error('Authentication failed')
 
-      const rawResponse = response.raw?.response as unknown as Record<string, string> | undefined
-      const userHandle = rawResponse?.userHandle
-
       const credentialId = response.id
       const publicKey = credentialData.publicKey
-      // Surface the authenticator-emitted `userHandle` verbatim
-      // (base64url-encoded user id). Fall back to the base64-encoded
-      // userId we stashed during register, so callers see the same
-      // identifier shape across register and login.
-      const userId =
-        userHandle && userHandle.length > 0 ? userHandle : (credentialData.userId ?? undefined)
+      const userId = credentialData.userId
 
       // Hook for side effects (user provisioning, analytics, allow/deny).
       // The legacy contract — return a `Response` to merge fields onto
