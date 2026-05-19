@@ -1,6 +1,6 @@
 import { Address, Hex, Provider as ox_Provider, PublicKey } from 'ox'
 import { KeyAuthorization, SignatureEnvelope } from 'ox/tempo'
-import { tempoLocalnet } from 'viem/chains'
+import { tempoLocalnet } from 'viem/tempo/chains'
 import { afterEach, describe, expect, test, vi } from 'vp/test'
 
 import * as Dialog from '../Dialog.js'
