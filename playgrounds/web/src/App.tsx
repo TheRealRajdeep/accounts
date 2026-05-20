@@ -793,6 +793,7 @@ function WalletConnect(props: { adapterType: AdapterType }) {
     // Server Authentication: the SDK absolutizes relative URLs against
     // the dapp's origin before forwarding to the wallet host.
     const auth = authEnabled ? '/auth' : undefined
+    const showDeposit = showDepositEnabled ? buildShowDeposit(form) : undefined
 
     const capabilities =
       method === 'register'
@@ -802,12 +803,13 @@ function WalletConnect(props: { adapterType: AdapterType }) {
             ...(digest ? { digest } : {}),
             ...(authorizeAccessKey ? { authorizeAccessKey } : {}),
             ...(auth ? { auth } : {}),
-            ...(showDepositEnabled ? { showDeposit: true } : {}),
+            ...(showDeposit ? { showDeposit } : {}),
           } as const)
         : {
             ...(digest ? { digest } : {}),
             ...(authorizeAccessKey ? { authorizeAccessKey } : {}),
             ...(auth ? { auth } : {}),
+            ...(showDeposit ? { showDeposit } : {}),
           }
 
     execute(() =>
@@ -981,6 +983,33 @@ function WalletConnect(props: { adapterType: AdapterType }) {
               Show Deposit
             </label>
           </legend>
+          {showDepositEnabled && (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 12,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                }}
+              >
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Amount</span>
+                  <input name="showDepositAmount" placeholder="50" />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span>Token</span>
+                  <select name="showDepositToken" defaultValue="">
+                    <option value="" />
+                    {tokenlist.map((t) => (
+                      <option key={t.address} value={t.address}>
+                        {t.symbol}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
         </fieldset>
         <Button type="submit" value="login">
           Login
@@ -991,6 +1020,22 @@ function WalletConnect(props: { adapterType: AdapterType }) {
       </form>
     </Method>
   )
+}
+
+function buildShowDeposit(
+  form: FormData,
+): true | {
+  amount?: string | undefined
+  token?: string | undefined
+} {
+  const amount = String(form.get('showDepositAmount') ?? '').trim()
+  const token = String(form.get('showDepositToken') ?? '').trim()
+  const showDeposit = {
+    ...(amount ? { amount } : {}),
+    ...(token ? { token } : {}),
+  }
+  if (Object.keys(showDeposit).length === 0) return true
+  return showDeposit
 }
 
 function EthRequestAccounts() {
