@@ -7,6 +7,7 @@ export function LogInBody({
   status,
   result,
   onAction,
+  onDisconnect,
   delay,
   adapter,
 }: DemoBodyProps) {
@@ -17,12 +18,6 @@ export function LogInBody({
       : adapter === "privy"
         ? "Continue with Privy"
         : "Continue with Tempo";
-  const runningCta =
-    adapter === "webAuth"
-      ? "Awaiting passkey…"
-      : adapter === "privy"
-        ? "Opening Privy…"
-        : "Opening Tempo…";
   const description =
     adapter === "webAuth"
       ? "Sign in with an on-device passkey — no popup, no third-party host."
@@ -30,12 +25,8 @@ export function LogInBody({
         ? "Sign in via Privy. The SDK manages access keys after authentication."
         : "Continue with your Tempo wallet — passkeys and access keys handled by the SDK.";
 
-  const ctaLabel =
-    status === "running"
-      ? runningCta
-      : status === "done"
-        ? result?.summary ?? "Signed in"
-        : idleCta;
+  const connected = status === "done" && Boolean(result?.summary);
+  const accountLabel = connected ? result?.summary : "Not connected";
 
   return (
     <div
@@ -48,16 +39,33 @@ export function LogInBody({
         <p className="text-[13px] text-foreground-muted">{description}</p>
       </div>
 
-      <PrimaryButton
-        label={ctaLabel}
-        status={status}
-        onClick={onAction}
-        className="h-11 w-full"
-      />
+      <div className="flex min-h-8 items-center gap-2 bg-panel-3 px-3 py-2">
+        <span
+          aria-hidden
+          className={`size-1.5 shrink-0 rounded-full ${connected ? "bg-accent-live" : "bg-foreground-subtle"}`}
+        />
+        <p className="truncate font-mono text-[12px] text-foreground-muted">
+          {accountLabel}
+        </p>
+      </div>
 
-      {status === "done" && result?.summary ? (
-        <p className="font-mono text-[12px] text-foreground-muted">{result.summary}</p>
-      ) : null}
+      {connected ? (
+        <button
+          type="button"
+          onClick={onDisconnect}
+          disabled={!onDisconnect}
+          className="flex h-11 w-full items-center justify-center bg-panel-3 px-4 text-[14px] text-foreground-muted outline-none active:bg-surface-active focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-info focus-visible:outline-offset-2"
+        >
+          Log out
+        </button>
+      ) : (
+        <PrimaryButton
+          label={idleCta}
+          status="idle"
+          onClick={onAction}
+          className="h-11 w-full"
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import type { DemoBodyProps } from "../types";
-import { PrimaryButton, useBodyAnimation } from "./shared";
+import { FundingOverlay, PrimaryButton, useBodyAnimation } from "./shared";
 
 function SwapArrow() {
   return (
@@ -47,41 +47,69 @@ function TokenRow({
   );
 }
 
-export function TradeBody({
-  status,
-  result,
-  onAction,
-  delay,
-}: DemoBodyProps) {
+export function TradeBody(props: DemoBodyProps) {
+  const { status, result, onAction, delay } = props;
   const body = useBodyAnimation(delay);
+  const done = status === "done";
   const buttonLabel =
     status === "running"
-      ? "Opening Tempo…"
-      : status === "done"
-        ? "Exchanged"
-        : "Exchange";
+      ? "Reviewing…"
+      : done
+        ? "Exchange submitted"
+        : "Exchange $1.00";
 
   return (
     <div
       ref={body.ref}
-      className="flex w-full max-w-[420px] flex-col gap-3 bg-panel-2 p-6"
+      className="relative flex w-full max-w-[420px] flex-col gap-3 overflow-hidden bg-panel-2 p-6"
       style={body.style}
     >
-      <TokenRow label="From" amount="100" token="USDC" />
+      <TokenRow label="From" amount="1.00" token="pathUSD" />
       <div className="flex items-center justify-center py-2 text-foreground-muted">
         <SwapArrow />
       </div>
-      <TokenRow label="To" amount="92.34" token="EURC" />
+      <TokenRow label="Receive" amount="1.00" token="alphaUSD" />
+
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between bg-panel-3 px-4 py-3">
+          <span className="text-[12px] text-foreground-muted">Route</span>
+          <span className="font-mono text-[12px] text-foreground">
+            Stablecoin DEX
+          </span>
+        </div>
+        <div className="flex items-center justify-between bg-panel-3 px-4 py-3">
+          <span className="text-[12px] text-foreground-muted">Max slippage</span>
+          <span className="font-mono text-[12px] text-foreground">0.5%</span>
+        </div>
+      </div>
 
       <PrimaryButton
         label={buttonLabel}
-        status={status}
+        status={status === "running" ? "running" : "idle"}
+        disabled={done}
         onClick={onAction}
         className="mt-2 h-11 w-full"
       />
       {result?.summary ? (
-        <p className="font-mono text-[12px] text-foreground-muted">{result.summary}</p>
+        result.href && result.hrefLabel ? (
+          <p className="font-mono text-[10px] text-foreground-subtle">
+            {result.summary}{" "}
+            <a
+              href={result.href}
+              target="_blank"
+              rel="noreferrer"
+              className="outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-info focus-visible:outline-offset-2"
+            >
+              {result.hrefLabel}
+            </a>
+          </p>
+        ) : (
+          <p className="font-mono text-[10px] text-foreground-subtle">
+            {result.summary}
+          </p>
+        )
       ) : null}
+      <FundingOverlay {...props} />
     </div>
   );
 }

@@ -1,13 +1,9 @@
-import { Dialog, Provider, Storage, tempoWallet, webAuthn } from "accounts";
-import { tempo } from "viem/chains";
-import type { Adapter, AccountsProvider } from "./types";
-
-/** Chain the landing demos run against. Swap to `tempoModerato` for testnet. */
-export const CHAIN = tempo;
-/** Network label shown in the demo's URL bar — derived from `CHAIN.testnet`. */
-export const NETWORK: "mainnet" | "testnet" = CHAIN.testnet
-  ? "testnet"
-  : "mainnet";
+import { parseUnits } from "viem";
+import { type Config, createConfig, createStorage, http } from "wagmi";
+import { tempo, tempoModerato } from "wagmi/chains";
+import { tempoWallet } from "wagmi/tempo";
+import { Storage } from "accounts";
+import type { AccountsProvider } from "./types";
 
 /** All on-chain demo CTAs sign for $0.01 — the merchant display copy is just storytelling. */
 export const DEMO_AMOUNT_USD = "0.01";
@@ -16,19 +12,24 @@ export const STORAGE_KEY = "tempo-accounts-demo";
 /** Tempo path-USD aggregate token (TokenId 0). */
 export const PATH_USD =
   "0x20c0000000000000000000000000000000000000" as const;
+/** Tempo mainnet chain ID, used by demos that intentionally target production funds. */
+export const TEMPO_MAINNET_CHAIN_ID = tempo.id;
 
-/**
- * True when our origin shares the wallet's registrable domain (`tempo.xyz`).
- * The wallet's authorizeAccessKey validator bypasses the "must include
- * scopes" check for same-domain callers — so `*.tempo.xyz` can co-sign
- * a session key with just `limits`. Localhost and other origins must
- * either include `scopes` or skip authorizeAccessKey entirely.
- */
-export function isTrustedHost() {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "tempo.xyz" || host.endsWith(".tempo.xyz");
-}
+const ONE_DAY = 24 * 60 * 60;
+const FIVE_USD = 5_000_000n;
+const PUBLIC_TESTNET_FEE_PAYER = "https://sponsor.moderato.tempo.xyz";
+export const SPEND_PERMISSION_LIMIT_USD = "1.00";
+export const SPEND_PERMISSION_PAYMENT_COUNT = 5;
+export const SPEND_PERMISSION_RECIPIENT =
+  "0x0000000000000000000000000000000000000001" as const;
+export const SPEND_PERMISSION_VALID_SECONDS = ONE_DAY;
+const accountsStorage = Storage.combine(
+  Storage.cookie({ key: STORAGE_KEY }),
+  Storage.localStorage({ key: STORAGE_KEY }),
+);
+const wagmiStorage = createStorage({
+  storage: typeof window === "undefined" ? undefined : window.localStorage,
+});
 
 /**
  * Default `authorizeAccessKey` payload for `wallet_connect`. Mirrors
@@ -39,13 +40,10 @@ export function isTrustedHost() {
  * - `expiry`: 24h from now.
  * - `limits`: $5 ceiling on path-USD over a 1h window — generous enough
  *   for repeated $0.01 demo clicks, tight enough to be safe.
- *
- * Only valid when called from a same-registrable-domain origin (see
- * `isTrustedHost`). Cross-origin callers must also provide `scopes`.
+ * - `scopes`: path-USD transfers only, required by the wallet from
+ *   localhost and other cross-origin callers.
  */
 export function defaultAuthorizeAccessKey() {
-  const ONE_DAY = 24 * 60 * 60;
-  const FIVE_USD = BigInt(5_000_000); // 6 decimals = $5
   return {
     expiry: Math.floor(Date.now() / 1000) + ONE_DAY,
     limits: [
@@ -55,45 +53,118 @@ export function defaultAuthorizeAccessKey() {
         period: 3600,
       },
     ],
+    scopes: [
+      {
+        address: PATH_USD,
+        selector: "transfer(address,uint256)",
+      },
+    ],
   } as const;
 }
 
-/** Resolved colour-scheme to apply to the Tempo wallet dialog. Mirrors
- * the landing page's `data-theme` so the popup opens light/dark to match
- * the surrounding page. */
-export type DialogScheme = "light" | "dark";
-
-export function buildAdapter(adapter: Adapter, scheme: DialogScheme = "dark") {
-  if (adapter === "webAuth") return webAuthn();
-  // tempoAuth + privy share the dialog adapter under the hood.
-  // Dev: use popup — iframe mode trips React 19's logComponentRender
-  // cross-origin SecurityError that disrupts the dev overlay.
-  // Production: keep iframe (SDK default) for the embedded look.
-  const isDev = import.meta.env.DEV;
-  return tempoWallet({
-    name: "Accounts SDK",
-    theme: { radius: "large", scheme },
-    ...(isDev ? { dialog: Dialog.popup() } : {}),
-  });
+export function spendPermissionAuthorizeAccessKey() {
+  return {
+    expiry: Math.floor(Date.now() / 1000) + SPEND_PERMISSION_VALID_SECONDS,
+    limits: [
+      {
+        token: PATH_USD,
+        limit: parseUnits(SPEND_PERMISSION_LIMIT_USD, 6),
+      },
+    ],
+    scopes: [
+      {
+        address: PATH_USD,
+        selector: "transfer(address,uint256)",
+      },
+    ],
+  } as const;
 }
 
-export function createProvider(
-  adapter: Adapter,
-  scheme: DialogScheme = "dark",
-): AccountsProvider {
-  // Storage pattern lifted from wallet-next/src/lib/config.ts:
-  // cookie + localStorage is synchronous (no async hydration delay) and
-  // is what the wallet itself uses. `key` namespaces everything to this
-  // demo so multiple Tempo apps on the same domain don't collide.
-  const storage = Storage.combine(
-    Storage.cookie({ key: STORAGE_KEY }),
-    Storage.localStorage({ key: STORAGE_KEY }),
-  );
-  return Provider.create({
-    adapter: buildAdapter(adapter, scheme),
-    persistCredentials: true,
-    storage,
-  });
+type AuthorizeAccessKey =
+  | ReturnType<typeof defaultAuthorizeAccessKey>
+  | ReturnType<typeof spendPermissionAuthorizeAccessKey>;
+
+export const landingDemoWagmiConfig: Config = createConfig({
+  chains: [tempoModerato, tempo],
+  connectors: [
+    tempoWallet({
+      feePayer: PUBLIC_TESTNET_FEE_PAYER,
+      persistCredentials: true,
+      storage: accountsStorage,
+      testnet: true,
+      theme: { radius: "none" },
+      name: "Accounts SDK",
+    }),
+  ],
+  multiInjectedProviderDiscovery: false,
+  storage: wagmiStorage,
+  transports: {
+    [tempoModerato.id]: http(),
+    [tempo.id]: http(),
+  },
+});
+
+export async function getDemoProvider() {
+  const connector = landingDemoWagmiConfig.connectors[0];
+  if (!connector) throw new Error("Missing Tempo Wallet connector.");
+  return (await connector.getProvider()) as AccountsProvider;
+}
+
+export function connectCapabilities(options: {
+  authorizeAccessKey?: AuthorizeAccessKey | undefined;
+  authorizeDefaultAccessKey?: boolean | undefined;
+} = {}) {
+  const capabilities: Record<string, unknown> = {};
+  if (options.authorizeAccessKey) {
+    capabilities.authorizeAccessKey = options.authorizeAccessKey;
+  } else if (options.authorizeDefaultAccessKey !== false) {
+    capabilities.authorizeAccessKey = defaultAuthorizeAccessKey();
+  }
+  return capabilities;
+}
+
+type WalletConnectResult = {
+  accounts?: ReadonlyArray<{
+    address: `0x${string}`;
+    capabilities?: {
+      keyAuthorization?: {
+        address?: `0x${string}` | undefined;
+        expiry?: `0x${string}` | number | bigint | null | undefined;
+        keyId?: `0x${string}` | undefined;
+      } | undefined;
+    } | undefined;
+  }>;
+};
+
+/** Opens the wallet sign-in flow and returns the raw wallet_connect result. */
+export async function connectWalletResult(
+  provider: AccountsProvider,
+  options: {
+    authorizeAccessKey?: AuthorizeAccessKey | undefined;
+    authorizeDefaultAccessKey?: boolean | undefined;
+  } = {},
+) {
+  // Lazy access-key co-signing: every normal connect grants a scoped
+  // session key unless the caller supplies a specialized permission.
+  return (await provider.request({
+    method: "wallet_connect",
+    params: [{ capabilities: connectCapabilities(options) } as Record<
+      string,
+      unknown
+    >],
+  })) as WalletConnectResult;
+}
+
+/** Opens the wallet sign-in flow and returns the connected account address. */
+export async function connectWallet(
+  provider: AccountsProvider,
+  options: {
+    authorizeAccessKey?: AuthorizeAccessKey | undefined;
+    authorizeDefaultAccessKey?: boolean | undefined;
+  } = {},
+) {
+  const result = await connectWalletResult(provider, options);
+  return result?.accounts?.[0]?.address ?? null;
 }
 
 export function shorten(addr: string) {
