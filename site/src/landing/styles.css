@@ -67,6 +67,38 @@
   font-weight: 900;
 }
 
+@font-face {
+  font-family: "HBSet";
+  src: url("/fonts/Hbset/HBSetv0.96-Light.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/Jetbrains-Mono/JetBrainsMono-Light.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/Jetbrains-Mono/JetBrainsMono-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/Jetbrains-Mono/JetBrainsMono-Medium.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
 /* ─── Landing page colour catalogue ──────────────────────────────────────
  *
  * Every hex used anywhere on the marketing landing page lives in this file.
@@ -76,7 +108,8 @@
  *
  * Edit colours below to retheme the page in one place. Dark mode is the
  * default (under `:root`); the light overrides live under
- * `.accounts-landing[data-theme="light"]`.
+ * `html[style*="color-scheme: light"] .accounts-landing` (keyed off the
+ * `color-scheme` vocs writes on <html>).
  *
  * Tiers:
  *   1 — semantic chrome (background / foreground / borders / dash)
@@ -155,6 +188,8 @@
   --fill-0: #ffffff;
   --stroke-0: #ffffff;
   --footer-glow: rgba(0, 0, 0, 0.85);
+  --play-outline: #ededed;
+  --play-fill: #000000;
   --accent-live: #22c55e;
   --network-testnet: #fbbf24;
   --network-testnet-bg: rgba(251, 191, 36, 0.11);
@@ -249,14 +284,16 @@
 
   /* Fonts + motion */
   --font-pilat: "Pilat", Arial, Helvetica, sans-serif;
-  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-hbset: "HBSet", "Pilat", Arial, Helvetica, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
-/* The same overrides apply when the bootstrap script (vocs.config.ts) has
- * tagged the html root before React has hydrated `data-theme` onto the
- * <main>. This avoids a flash-of-dark on first paint in light mode. */
-.accounts-landing[data-theme="light"],
-:root[data-accounts-landing-theme="light"] .accounts-landing {
+/* Light-mode overrides key off the `color-scheme` that vocs writes onto
+ * <html> (via its own blocking head script) before React hydrates, so the
+ * landing tokens flip in lockstep with the rest of the page and there is no
+ * flash-of-dark on first paint. We piggyback on vocs's single theme source
+ * of truth instead of maintaining a parallel `data-theme` attribute. */
+html[style*="color-scheme: light"] .accounts-landing {
   /* Tier 1 — chrome */
   --background: #ffffff;
   --surface: #f8f8f8;
@@ -319,6 +356,8 @@
   --fill-0: #0a0a0a;
   --stroke-0: #0a0a0a;
   --footer-glow: rgba(255, 255, 255, 0.85);
+  --play-outline: #383838;
+  --play-fill: #ffffff;
   --accent-live: #16a34a;
   --network-testnet: #b45309;
   --network-testnet-bg: rgba(180, 83, 9, 0.08);
@@ -347,7 +386,7 @@
   --game-over-sub: #525252;
 
   /* Tier 8 — ascii-bg / InteractiveQr dot field */
-  --canvas-dot-rgb: 80, 80, 80;
+  --canvas-dot-rgb: 200, 200, 200;
   --canvas-dot-alpha-base: 0.1;
   --canvas-dot-alpha-hover: 0.18;
 }
@@ -402,6 +441,10 @@
   --color-network-testnet: var(--network-testnet);
   --color-network-testnet-bg: var(--network-testnet-bg);
 
+  /* Display font (HBSet) — reserved for the brand wordmark / hero
+   * heading only. Body copy stays on the sans (Pilat) family. */
+  --font-display: var(--font-hbset);
+
   /* Motion */
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
@@ -424,30 +467,17 @@
 
 .accounts-landing {
   --font-sans: var(--font-pilat);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-jetbrains-mono);
 
   background: var(--background);
   color: var(--foreground);
-  color-scheme: dark;
+  /* Inherit the `color-scheme` vocs sets on <html> so form controls,
+   * scrollbars, etc. track the page theme. The token catalogue above is
+   * dark by default and flips via the `html[style*="color-scheme: light"]`
+   * override. */
   font-family: var(--font-pilat), Arial, Helvetica, sans-serif;
   font-weight: 350;
   -webkit-font-smoothing: antialiased;
-}
-
-.accounts-landing[data-theme="light"],
-:root[data-accounts-landing-theme="light"] .accounts-landing {
-  color-scheme: light;
-}
-
-.accounts-landing[data-theme-transitions="disabled"],
-.accounts-landing[data-theme-transitions="disabled"] *,
-.accounts-landing[data-theme-transitions="disabled"] *::before,
-.accounts-landing[data-theme-transitions="disabled"] *::after,
-:root[data-accounts-landing-transitions="disabled"] .accounts-landing,
-:root[data-accounts-landing-transitions="disabled"] .accounts-landing *,
-:root[data-accounts-landing-transitions="disabled"] .accounts-landing *::before,
-:root[data-accounts-landing-transitions="disabled"] .accounts-landing *::after {
-  transition: none !important;
 }
 
 .accounts-landing button:not(:disabled) {
@@ -460,6 +490,27 @@
 
 .accounts-landing .scrollbar-hide {
   scrollbar-width: none;
+}
+
+/* Soft "knockout" halo of the page background, painted around glyphs so
+ * text sits cleanly on top of the ASCII pattern without needing a hard
+ * background rectangle behind it. Stack four shadows so the fill stays
+ * opaque through the blur. SVG content (icons) inside the halo gets the
+ * same effect via `filter: drop-shadow` since `text-shadow` doesn't
+ * paint around SVG. */
+.accounts-landing .text-halo {
+  text-shadow:
+    0 0 6px var(--background),
+    0 0 6px var(--background),
+    0 0 6px var(--background),
+    0 0 12px var(--background);
+}
+
+.accounts-landing .text-halo svg {
+  filter:
+    drop-shadow(0 0 3px var(--background))
+    drop-shadow(0 0 3px var(--background))
+    drop-shadow(0 0 6px var(--background));
 }
 
 @keyframes fadeUp {

@@ -590,23 +590,28 @@ function CustomThemeToolbar({
 }
 
 export default function Customize() {
-  const [theme, setTheme] = useState<ThemePreset>("Default");
+  const [theme, setTheme] = useState<ThemePreset>("Custom");
   const sectionRef = useRef<HTMLElement | null>(null);
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const marqueeAnimationRef = useRef<WAAPIAnimation | null>(null);
   const cardAnimationRef = useRef<WAAPIAnimation | null>(null);
-  // The Custom preset seeds its initial `scheme` from the landing page's
-  // resolved theme so opening the section in site light mode previews
-  // the SDK's light scheme by default. After the first paint the user
-  // owns the value — the Custom toolbar's Light/Dark toggle still works
-  // exactly as before. (Using a lazy `useState` initialiser so we don't
-  // re-seed when the user later flips the site theme.)
+  // The Custom preset's `scheme` tracks the global site theme: it seeds
+  // from the resolved theme on first paint and re-syncs whenever the user
+  // flips the page's light/dark switch, so the preview always matches the
+  // surrounding page. The toolbar's own Light/Dark toggle still lets the
+  // user override it until the next global flip.
   const { resolved } = useTheme();
   const [custom, setCustom] = useState<CustomTheme>(() => ({
     accent: "#3b82f6",
     radius: "medium",
     scheme: resolved,
   }));
+
+  useEffect(() => {
+    setCustom((prev) =>
+      prev.scheme === resolved ? prev : { ...prev, scheme: resolved },
+    );
+  }, [resolved]);
 
   useEffect(() => {
     const el = marqueeRef.current;
@@ -679,7 +684,7 @@ export default function Customize() {
       style={{ animation: `fadeUp 600ms ${easeOut} 0ms both` }}
     >
       <div className="flex flex-col items-center gap-3 text-center">
-        <h2 className="text-[32px] leading-[1.1] tracking-[-0.02em] text-foreground sm:text-[40px]">
+        <h2 className="font-display text-[32px] leading-[1.1] tracking-[-0.03em] text-foreground sm:text-[40px]">
           Customize to <br className="sm:hidden" /> match your app
         </h2>
         <p className="max-w-[600px] text-[16px] text-foreground-muted sm:text-[18px]">
@@ -706,7 +711,15 @@ export default function Customize() {
         </div>
       </div>
 
-      <div className="group mt-14 -mx-6 overflow-hidden">
+      <div
+        className="group mt-14 -mx-6 overflow-hidden"
+        style={{
+          maskImage:
+            "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
+        }}
+      >
         <div
           ref={marqueeRef}
           className="flex w-max items-center will-change-transform"
