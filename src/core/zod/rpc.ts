@@ -347,6 +347,29 @@ export namespace wallet_getCapabilities {
 }
 
 export namespace wallet_authorizeAccessKey {
+  /**
+   * Shows an optional funding prompt after `wallet_authorizeAccessKey`
+   * succeeds.
+   *
+   * `true` prompts after approval. Object form pre-fills deposit UI hints.
+   */
+  export const showDeposit = z.optional(
+    z.union([
+      z.boolean(),
+      z.object({
+        /** Human-readable amount to pre-fill (e.g. `"50"`). */
+        amount: z.optional(z.string()),
+        /** Display name shown in the deposit UI (e.g. the app name). */
+        displayName: z.optional(z.string()),
+        /**
+         * Token to pre-fill, accepted as either a contract address or a
+         * supported deposit token symbol (case-insensitive, e.g. `"USDC"`).
+         */
+        token: z.optional(z.union([u.address(), z.string()])),
+      }),
+    ]),
+  )
+
   export const parameters = z.object({
     address: z.optional(u.address()),
     chainId: z.optional(u.bigint()),
@@ -371,6 +394,7 @@ export namespace wallet_authorizeAccessKey {
         ),
       ),
     ),
+    showDeposit,
   })
 
   export const returns = z.object({
@@ -409,6 +433,7 @@ export namespace wallet_authorizeAccessKey_strict {
         )
         .check(z.minLength(1)),
     ),
+    showDeposit: wallet_authorizeAccessKey.showDeposit,
   })
 }
 
@@ -425,16 +450,11 @@ export namespace wallet_revokeAccessKey {
 }
 
 export namespace wallet_connect {
-  export const authorizeAccessKey = z.optional(wallet_authorizeAccessKey.parameters)
+  export const authorizeAccessKey = z.optional(
+    z.omit(wallet_authorizeAccessKey.parameters, { showDeposit: true }),
+  )
 
-  /**
-   * Shows an optional funding prompt after `wallet_connect` succeeds.
-   *
-   * `true` prompts after both registration and login. Object form pre-fills
-   * deposit UI hints and can scope the prompt to a specific connect method
-   * with `on`. The deposit chain comes from the surrounding `wallet_connect`
-   * chain context.
-   */
+  /** Shows an optional funding prompt after `wallet_connect` succeeds. */
   export const showDeposit = z.optional(
     z.union([
       z.boolean(),
@@ -443,7 +463,7 @@ export namespace wallet_connect {
         amount: z.optional(z.string()),
         /** Display name shown in the deposit UI (e.g. the app name). */
         displayName: z.optional(z.string()),
-        /** Connect method that should show the deposit prompt. Defaults to both methods. */
+        /** Auth event that should show the deposit prompt. Defaults to any event. */
         on: z.optional(z.union([z.literal('login'), z.literal('register')])),
         /**
          * Token to pre-fill, accepted as either a contract address or a
@@ -584,7 +604,9 @@ export namespace wallet_connect {
 }
 
 export namespace wallet_connect_strict {
-  const authorizeAccessKey = z.optional(wallet_authorizeAccessKey_strict.parameters)
+  const authorizeAccessKey = z.optional(
+    z.omit(wallet_authorizeAccessKey_strict.parameters, { showDeposit: true }),
+  )
   const auth = wallet_connect.auth
   const personalSign = wallet_connect.personalSign
   const showDeposit = wallet_connect.showDeposit
