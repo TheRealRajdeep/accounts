@@ -280,18 +280,17 @@ export function create(options: create.Options = {}): create.ReturnType {
                         ...(feePayer ? { feePayer: true } : {}),
                       }
                       const formatter = client.chain?.formatters?.transactionRequest
-                      const formatted =
-                        formatter && !fillRequest.keyAuthorization
-                          ? formatter.format({ ...fillRequest } as never, 'fillTransaction')
-                          : fillRequest
+                      const formatted = formatter
+                        ? formatter.format({ ...fillRequest } as never, 'fillTransaction')
+                        : fillRequest
                       return client.request({
                         method: 'eth_fillTransaction',
                         params: [formatted as never],
                       })
                     }
 
-                    // Inject pending keyAuthorization so the node accounts for
-                    // key authorization gas during estimation.
+                    // Route through the managed access-key account so viem can
+                    // attach stored key authorizations during fill.
                     if (!parameters.keyAuthorization) {
                       const state = store.getState()
                       const address =

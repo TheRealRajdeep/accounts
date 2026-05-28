@@ -67,7 +67,6 @@ export function local(options: local.Options): Adapter.Adapter {
       const prepared = await prepareTransactionRequest(client, {
         account,
         ...request,
-        keyAuthorization: undefined,
         type: 'tempo',
       })
       async function sign() {

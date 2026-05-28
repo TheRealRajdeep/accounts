@@ -1,9 +1,8 @@
 import { Address, Hex } from 'ox'
-import { KeyAuthorization } from 'ox/tempo'
 import type { Client, Transport } from 'viem'
 import { prepareTransactionRequest } from 'viem/actions'
 import type { PrepareTransactionRequestReturnType } from 'viem/actions'
-import type { Transaction as TempoTransaction } from 'viem/tempo'
+import type { Account as TempoAccount, Transaction as TempoTransaction } from 'viem/tempo'
 
 import * as AccessKey from '../AccessKey.js'
 import * as ExecutionError from '../ExecutionError.js'
@@ -15,8 +14,6 @@ type Call = {
   data?: Hex.Hex | undefined
 }
 
-type Selection = NonNullable<Awaited<ReturnType<typeof AccessKey.select>>>
-
 const removalErrorNames = new Set([
   'InvalidSignature',
   'InvalidSignatureFormat',
@@ -27,18 +24,17 @@ const removalErrorNames = new Set([
   'SignatureTypeMismatch',
 ])
 
-/** Creates a lifecycle-aware access-key transaction when a matching key is available. */
+/** Creates a transaction helper for a matching locally-signable access key. */
 export async function create(options: create.Options): Promise<create.ReturnType> {
   const { address, calls, chainId, client, store } = options
-  const selection = await AccessKey.select({
+  const account = await AccessKey.select({
     account: address,
     calls,
     chainId,
-    client,
     store,
   })
-  if (!selection) return undefined
-  return createTransaction({ client, selection, store })
+  if (!account) return undefined
+  return createTransaction({ account, address, chainId, client, store })
 }
 
 export declare namespace create {
@@ -74,11 +70,11 @@ export declare namespace create {
   /** Result returned by `eth_sendTransactionSync`. */
   type SendSyncReturnType = Rpc.eth_sendTransactionSync.Encoded['returns']
 
-  /** Prepared access-key transaction with lifecycle-aware execution methods. */
+  /** Prepared access-key transaction with execution methods. */
   type Prepared = {
     /** Prepared request that will be signed by the selected access key. */
     request: PreparedRequest
-    /** Signs the prepared transaction and marks an attached authorization as pending. */
+    /** Signs the prepared transaction. */
     sign(): Promise<Hex.Hex>
     /** Signs and submits the transaction asynchronously. */
     send(): Promise<Hex.Hex>
@@ -86,59 +82,60 @@ export declare namespace create {
     sendSync(): Promise<SendSyncReturnType>
   }
 
-  /** Lifecycle-aware access-key transaction. */
+  /** Access-key transaction helper. */
   type Transaction = {
-    /** Fills a transaction, attaching a pending key authorization when needed. */
+    /** Fills a transaction through the selected access key account. */
     fill(parameters: FillParameters): Promise<FillReturnType>
-    /** Prepares a transaction, attaching a pending key authorization when needed. */
+    /** Prepares a transaction through the selected access key account. */
     prepare(parameters: PrepareParameters): Promise<Prepared>
   }
 
-  /** Lifecycle-aware access-key transaction, if one is available. */
+  /** Access-key transaction helper, if one is available. */
   type ReturnType = Transaction | undefined
 }
 
 function createTransaction(options: {
+  account: TempoAccount.AccessKeyAccount
+  address: Address.Address
+  chainId: number
   client: Client<Transport>
-  selection: Selection
   store: Store.Store
 }): create.Transaction {
-  const { client, selection, store } = options
+  const { account, address, chainId, client, store } = options
   return {
     async fill(parameters) {
       try {
-        return await fillTransaction(client, {
+        // Run prepareTransactionRequest to attach any pending key authorizations.
+        // `eth_fillTransaction` below needs to return the node's fill response.
+        const request = await prepareTransactionRequest(client, {
+          account,
           ...parameters,
-          ...(!parameters.keyAuthorization && selection.authorization
-            ? {
-                keyAuthorization: {
-                  address: selection.authorization.address,
-                  ...KeyAuthorization.toRpc(selection.authorization),
-                } as never,
-              }
-            : {}),
+          parameters: [],
+          type: 'tempo',
         } as never)
+        return await fillTransaction(client, request as never)
       } catch (error) {
-        removeForError(error, selection, { store })
+        removeForError(error, { account, address, chainId, store })
         throw error
       }
     },
     async prepare(parameters) {
       try {
         const request = await prepareTransactionRequest(client, {
-          account: selection.account,
+          account,
           ...parameters,
-          ...(selection.authorization ? { keyAuthorization: selection.authorization } : {}),
           type: 'tempo',
         } as never)
         return createPreparedTransaction({
+          account,
+          address,
+          chainId,
           client,
           request: request as never,
-          selection,
           store,
         })
       } catch (error) {
-        removeForError(error, selection, { store })
+        removeForError(error, { account, address, chainId, store })
         throw error
       }
     },
@@ -146,26 +143,20 @@ function createTransaction(options: {
 }
 
 function createPreparedTransaction(options: {
+  account: TempoAccount.AccessKeyAccount
+  address: Address.Address
+  chainId: number
   client: Client<Transport>
   request: create.PreparedRequest
-  selection: Selection
   store: Store.Store
 }): create.Prepared {
-  const { client, request, selection, store } = options
+  const { account, address, chainId, client, request, store } = options
 
   async function sign() {
     try {
-      const signed = await selection.account.signTransaction(request as never)
-      if (selection.authorization)
-        AccessKey.markPending({
-          accessKey: selection.accessKey,
-          account: selection.record.access,
-          chainId: selection.record.chainId,
-          store,
-        })
-      return signed
+      return await account.signTransaction(request as never)
     } catch (error) {
-      removeForError(error, selection, { store })
+      removeForError(error, { account, address, chainId, store })
       throw error
     }
   }
@@ -181,26 +172,19 @@ function createPreparedTransaction(options: {
           params: [signed],
         })) as Hex.Hex
       } catch (error) {
-        removeForError(error, selection, { store })
+        removeForError(error, { account, address, chainId, store })
         throw error
       }
     },
     async sendSync() {
       try {
         const signed = await sign()
-        const result = await client.request({
+        return (await client.request({
           method: 'eth_sendRawTransactionSync' as never,
           params: [signed],
-        })
-        AccessKey.markPublished({
-          accessKey: selection.accessKey,
-          account: selection.record.access,
-          chainId: selection.record.chainId,
-          store,
-        })
-        return result as create.SendSyncReturnType
+        })) as create.SendSyncReturnType
       } catch (error) {
-        removeForError(error, selection, { store })
+        removeForError(error, { account, address, chainId, store })
         throw error
       }
     },
@@ -211,27 +195,30 @@ async function fillTransaction(
   client: Client<Transport>,
   parameters: create.FillParameters,
 ): Promise<create.FillReturnType> {
-  const { keyAuthorization, ...rest } = parameters as create.FillParameters & {
-    keyAuthorization?: unknown
-  }
   const formatter = client.chain?.formatters?.transactionRequest
-  const formatted = formatter ? formatter.format({ ...rest } as never, 'fillTransaction') : rest
+  const formatted = formatter
+    ? formatter.format({ ...parameters } as never, 'fillTransaction')
+    : parameters
   return (await client.request({
     method: 'eth_fillTransaction' as never,
-    params: [{ ...formatted, ...(keyAuthorization ? { keyAuthorization } : {}) } as never],
+    params: [formatted as never],
   })) as create.FillReturnType
 }
 
 function removeForError(
   error: unknown,
-  selection: Selection,
-  options: { store: Store.Store },
+  options: {
+    account: TempoAccount.AccessKeyAccount
+    address: Address.Address
+    chainId: number
+    store: Store.Store
+  },
 ): void {
   if (!shouldRemoveForError(error)) return
   AccessKey.remove({
-    accessKey: selection.accessKey,
-    account: selection.record.access,
-    chainId: selection.record.chainId,
+    accessKey: options.account.accessKeyAddress,
+    account: options.address,
+    chainId: options.chainId,
     store: options.store,
   })
 }
@@ -239,5 +226,20 @@ function removeForError(
 function shouldRemoveForError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const parsed = ExecutionError.parse(error)
-  return removalErrorNames.has(parsed.errorName)
+  if (removalErrorNames.has(parsed.errorName)) return true
+  const text = getErrorText(error)
+  return [...removalErrorNames].some((name) => text.includes(name))
+}
+
+function getErrorText(error: unknown): string {
+  if (!(error instanceof Error)) return ''
+  const details = (error as { details?: unknown }).details
+  const shortMessage = (error as { shortMessage?: unknown }).shortMessage
+  const cause = (error as { cause?: unknown }).cause
+  return [
+    error.message,
+    typeof details === 'string' ? details : '',
+    typeof shortMessage === 'string' ? shortMessage : '',
+    getErrorText(cause),
+  ].join('\n')
 }

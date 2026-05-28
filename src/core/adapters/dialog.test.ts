@@ -203,7 +203,6 @@ describe('dialog', () => {
   test('behavior: sendTransaction falls through when no access key is selected', async () => {
     const storage = Storage.memory()
     const store = Store.create({ chainId: tempoLocalnet.id, storage })
-    vi.spyOn(AccessKeyTransaction, 'create').mockResolvedValue(undefined)
     const lookups: unknown[] = []
     const adapter = dialog({ dialog: Dialog.noop() })({
       getAccount: (options) => {
@@ -503,7 +502,6 @@ describe('dialog', () => {
   test('error: wallet validation errors keep their RPC code', async () => {
     const storage = Storage.memory()
     const store = Store.create({ chainId: tempoLocalnet.id, storage })
-    vi.spyOn(AccessKeyTransaction, 'create').mockResolvedValue(undefined)
     const adapter = dialog({ dialog: Dialog.noop() })({
       getAccount: () => {
         throw new ox_Provider.UnauthorizedError({ message: 'No local signer.' })
